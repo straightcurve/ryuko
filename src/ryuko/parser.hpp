@@ -61,6 +61,8 @@ public:
         }
 
         if (!expect(',')) {
+          index = start;
+
           return {};
         }
 
@@ -68,6 +70,8 @@ public:
       }
 
       if (!expect(')')) {
+        index = start;
+
         return {};
       }
     }
@@ -87,7 +91,7 @@ public:
     size_t scopes = 1;
     std::vector<std::string> args;
 
-    while (scopes) {
+    while (scopes && !done()) {
       const auto c = consumeCharacter();
       if (c == "{") {
         scopes++;
@@ -96,6 +100,14 @@ public:
       }
 
       function.body += c;
+    }
+
+    if (scopes) {
+      printError('}');
+
+      index = start;
+
+      return {};
     }
 
     return {function};
