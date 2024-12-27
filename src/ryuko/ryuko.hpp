@@ -12,12 +12,19 @@ struct Output : Emitter::Output {
 
 struct Sink {
   virtual ~Sink() = default;
+
+  virtual bool hasFragmentCode() = 0;
+  virtual bool hasVertexCode() = 0;
+
   virtual void write(const std::string &vertexCode,
                      const std::string &fragmentCode,
                      const std::filesystem::path &basePath) = 0;
 };
 
 struct FileSink : Sink {
+  bool hasFragmentCode() override { assert(false); }
+  bool hasVertexCode() override { assert(false); }
+
   void write(const std::string &vertexCode, const std::string &fragmentCode,
              const std::filesystem::path &path) override {
     auto basePath = path.parent_path();
@@ -46,6 +53,9 @@ struct MemorySink : Sink {
   std::filesystem::path path;
   std::string vertexCode;
   std::string fragmentCode;
+
+  bool hasFragmentCode() override { return !fragmentCode.empty(); }
+  bool hasVertexCode() override { return !vertexCode.empty(); }
 
   void write(const std::string &vertexCode, const std::string &fragmentCode,
              const std::filesystem::path &path) override {

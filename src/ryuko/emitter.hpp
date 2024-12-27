@@ -170,6 +170,11 @@ public:
       newLine(fragment);
     }
 
+    for (const auto &code : context.inlinedFragmentCode) {
+      fragment.output += fmt::format("{}", code);
+      newLine(fragment);
+    }
+
     for (auto &varying : fragment.context.varyings) {
       if (const auto &assignment = fmt::format(" {} =", varying.name);
           vertex.main->body.find(assignment) != std::string::npos) {

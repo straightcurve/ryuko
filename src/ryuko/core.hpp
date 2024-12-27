@@ -41,6 +41,7 @@ struct Context {
   std::vector<std::string> directives;
   std::vector<Function> functions;
   std::vector<Varying> varyings;
+  std::vector<std::string> inlinedFragmentCode;
   int version;
 };
 

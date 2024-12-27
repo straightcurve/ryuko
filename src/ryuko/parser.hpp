@@ -272,7 +272,15 @@ public:
       }
 
       if (auto result = consumeDirective(); result.has_value()) {
-        context.directives.push_back(result.value());
+        if (result.value() != "dawn_inline_frag") {
+          context.directives.push_back(result.value());
+          continue;
+        }
+
+        auto inlinedCode = consumeUntil("#dawn_inline_frag");
+        context.inlinedFragmentCode.push_back(inlinedCode);
+
+        consumeDirective();
         continue;
       }
 
