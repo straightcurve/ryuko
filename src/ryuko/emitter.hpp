@@ -6,7 +6,7 @@ namespace ryuko {
 
 struct Emitter {
   struct Output {
-    std::string fragment;
+    Optional<std::string> fragment;
     std::string vertex;
   };
 
@@ -55,8 +55,8 @@ public:
 
     state.output += fmt::format("{} {}(", functionReturnType, functionName);
 
-    for (auto a = 0; a < function.args.size(); a++) {
-      const auto &[type, name] = function.args[a];
+    for (size_t a = 0; a < function.args.size(); a++) {
+      const auto &[type, name, isArray] = function.args[a];
       state.output += fmt::format("{} {}{}", type, name,
                                   a + 1 < function.args.size() ? ", " : "");
     }
@@ -92,8 +92,8 @@ public:
 
     state.output += fmt::format("{} {}(", function.returnType, function.name);
 
-    for (auto a = 0; a < function.args.size(); a++) {
-      const auto &[type, name] = function.args[a];
+    for (size_t a = 0; a < function.args.size(); a++) {
+      const auto &[type, name, isArray] = function.args[a];
       state.output += fmt::format("{} {}{}", type, name,
                                   a + 1 < function.args.size() ? ", " : "");
     }
@@ -130,9 +130,6 @@ public:
     State fragment{context, FragFunctionName};
     State vertex{context, VertFunctionName};
 
-    version(fragment);
-    newLine(fragment);
-
     version(vertex);
     newLine(vertex);
 
@@ -141,9 +138,9 @@ public:
       return {};
     }
 
-    if (!fragment.main) {
-      error("no fragment main function");
-      return {};
+    if (fragment.main) {
+      version(fragment);
+      newLine(fragment);
     }
 
     std::vector<std::string> extensions{
@@ -158,32 +155,54 @@ public:
       vertex.output += extension;
       newLine(vertex);
 
-      fragment.output += extension;
-      newLine(fragment);
+      if (fragment.main) {
+        fragment.output += extension;
+        newLine(fragment);
+      }
     }
 
     for (const auto &directive : context.directives) {
       vertex.output += fmt::format("#{}", directive);
       newLine(vertex);
 
-      fragment.output += fmt::format("#{}", directive);
-      newLine(fragment);
+      if (fragment.main) {
+        fragment.output += fmt::format("#{}", directive);
+        newLine(fragment);
+      }
     }
 
-    for (const auto &code : context.inlinedFragmentCode) {
-      fragment.output += fmt::format("{}", code);
-      newLine(fragment);
+    if (fragment.main) {
+      for (const auto &code : context.inlinedFragmentCode) {
+        fragment.output += fmt::format("{}", code);
+        newLine(fragment);
+      }
     }
 
-    for (auto &varying : fragment.context.varyings) {
-      if (const auto &assignment = fmt::format(" {} =", varying.name);
-          vertex.main->body.find(assignment) != std::string::npos) {
-        varyingOutput(varying, vertex);
-        varyingInput(varying, fragment);
-      } else if (fragment.main->body.find(assignment) != std::string::npos) {
-        varyingOutput(varying, fragment);
-      } else {
+    //  @temp(v2f): mark inputs/outputs
+    if (fragment.main) {
+      for (auto &varying : fragment.context.varyings) {
+        if (const auto &assignment = fmt::format(" {} =", varying.name);
+            vertex.main->body.find(assignment) != std::string::npos) {
+          varyingOutput(varying, vertex);
+          varyingInput(varying, fragment);
+
+          varying.fragmentInput = true;
+          varying.vertexOutput = true;
+        } else if (fragment.main->body.find(assignment) != std::string::npos) {
+          varyingOutput(varying, fragment);
+
+          varying.fragmentOutput = true;
+        } else {
+          varyingInput(varying, vertex);
+
+          varying.vertexInput = true;
+        }
+      }
+    } else {
+      for (auto &varying : vertex.context.varyings) {
         varyingInput(varying, vertex);
+
+        varying.vertexInput = true;
       }
     }
 
@@ -191,25 +210,39 @@ public:
       newLine(vertex);
     }
 
-    if (fragment.varyingInputIndex + fragment.varyingOutputIndex) {
+    if (fragment.main &&
+        fragment.varyingInputIndex + fragment.varyingOutputIndex) {
       newLine(fragment);
     }
 
     functionSignatureWithCallees(*vertex.main, vertex);
-    functionSignatureWithCallees(*fragment.main, fragment);
+
+    if (fragment.main) {
+      functionSignatureWithCallees(*fragment.main, fragment);
+    }
 
     if (!vertex.emittedFunctionSignatures.empty()) {
       newLine(vertex);
     }
 
-    if (!fragment.emittedFunctionSignatures.empty()) {
+    if (fragment.main && !fragment.emittedFunctionSignatures.empty()) {
       newLine(fragment);
     }
 
     functionWithCallees(*vertex.main, vertex);
-    functionWithCallees(*fragment.main, fragment);
 
-    return {Output{fragment.output, vertex.output}};
+    if (fragment.main) {
+      functionWithCallees(*fragment.main, fragment);
+    }
+
+    Output result{};
+    result.vertex = vertex.output;
+
+    if (fragment.main) {
+      result.fragment = fragment.output;
+    }
+
+    return result;
   }
 
   static void varyingInput(const Varying &varying, State &state) {

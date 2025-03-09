@@ -11,19 +11,34 @@ struct Output : Emitter::Output {
 };
 
 struct Sink {
+  std::vector<Varying> vertexInputs;
+  std::vector<Varying> varyings;
+  std::vector<Varying> fragmentOutputs;
+  std::vector<BufferLayout> bufferLayouts;
+  std::vector<ShaderInput> inputs;
+  std::vector<StorageBuffer> storageBuffers;
+  std::vector<Uniform> uniforms;
+
+public:
   virtual ~Sink() = default;
 
-  virtual bool hasFragmentCode() = 0;
-  virtual bool hasVertexCode() = 0;
-
+  virtual bool hasFragmentCode() const = 0;
+  virtual bool hasVertexCode() const = 0;
   virtual void write(const std::string &vertexCode,
                      const std::string &fragmentCode,
                      const std::filesystem::path &basePath) = 0;
 };
 
-struct FileSink : Sink {
-  bool hasFragmentCode() override { assert(false); }
-  bool hasVertexCode() override { assert(false); }
+struct FileSink final : Sink {
+  bool hasFragmentCode() const override {
+    assert(false);
+    return false;
+  }
+
+  bool hasVertexCode() const override {
+    assert(false);
+    return false;
+  }
 
   void write(const std::string &vertexCode, const std::string &fragmentCode,
              const std::filesystem::path &path) override {
@@ -49,13 +64,14 @@ struct FileSink : Sink {
   }
 };
 
-struct MemorySink : Sink {
+struct MemorySink final : Sink {
   std::filesystem::path path;
   std::string vertexCode;
   std::string fragmentCode;
 
-  bool hasFragmentCode() override { return !fragmentCode.empty(); }
-  bool hasVertexCode() override { return !vertexCode.empty(); }
+public:
+  bool hasFragmentCode() const override { return !fragmentCode.empty(); }
+  bool hasVertexCode() const override { return !vertexCode.empty(); }
 
   void write(const std::string &vertexCode, const std::string &fragmentCode,
              const std::filesystem::path &path) override {
@@ -65,6 +81,7 @@ struct MemorySink : Sink {
   }
 };
 
+[[maybe_unused]]
 static Optional<Output> transpile(const std::filesystem::path &path,
                                   Sink &sink) {
   std::ifstream file(path, std::ios::binary);
@@ -78,7 +95,7 @@ static Optional<Output> transpile(const std::filesystem::path &path,
   buffer << file.rdbuf();
   file.close();
 
-  Parser parser{buffer.str()};
+  Parser parser{buffer.str(), path};
   if (auto parseResult = parser.parse(); parseResult.has_value()) {
     Context &context = parseResult.value();
 
@@ -86,11 +103,46 @@ static Optional<Output> transpile(const std::filesystem::path &path,
     transpiler.setReturnValues();
 
     if (auto emitResult = Emitter::program(context); emitResult.has_value()) {
-      sink.write(emitResult->vertex, emitResult->fragment, path);
+      if (emitResult->fragment.has_value()) {
+        sink.write(emitResult->vertex, emitResult->fragment.value(), path);
+      } else {
+        sink.write(emitResult->vertex, {}, path);
+      }
 
-      return {{path.parent_path() / fmt::format("{}.frag", path.stem().c_str()),
-               path.parent_path() / fmt::format("{}.vert", path.stem().c_str()),
-               context.version}};
+      sink.storageBuffers = context.storageBuffers;
+      sink.bufferLayouts = context.bufferLayouts;
+      sink.inputs = context.inputs;
+      sink.uniforms = context.uniforms;
+
+      //  @temp(v2f): generate vertex input struct
+      {
+        std::vector<Varying> vertexInputs;
+        std::vector<Varying> varyings;
+        std::vector<Varying> fragmentOutputs;
+
+        for (auto &varying : context.varyings) {
+          if (varying.vertexInput) {
+            vertexInputs.push_back(varying);
+          } else if (varying.fragmentOutput) {
+            fragmentOutputs.push_back(varying);
+          } else {
+            varyings.push_back(varying);
+          }
+        }
+
+        sink.vertexInputs = vertexInputs;
+        sink.varyings = varyings;
+        sink.fragmentOutputs = fragmentOutputs;
+      }
+
+      Output o{};
+      o.version = context.version;
+      o.fragment =
+          path.parent_path() / fmt::format("{}.frag", path.stem().c_str());
+      o.vertex =
+          path.parent_path() / fmt::format("{}.vert", path.stem().c_str());
+
+      return o;
     }
 
     error("failed to emit shader: {}", path.c_str());

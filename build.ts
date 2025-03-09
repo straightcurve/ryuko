@@ -2,10 +2,14 @@ import {Builder} from "@sweetacid/mei";
 
 const packages = [
     "fmt",
+    "shaderc"
 ];
 
 const cxxFlags = [
     "-Werror=return-type",
+    "-Wall",
+    "-Wextra",
+    "-pedantic"
 ];
 
 export default async function (builder: Builder) {

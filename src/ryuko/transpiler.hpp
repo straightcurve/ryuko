@@ -16,15 +16,8 @@ public:
 public:
   void setReturnValues() const {
     Function *vert = findFunction(VertFunctionName);
-    Function *frag = findFunction(FragFunctionName);
-
     if (!vert) {
       error("no vertex main function");
-      return;
-    }
-
-    if (!frag) {
-      error("no fragment main function");
       return;
     }
 
@@ -40,19 +33,21 @@ public:
       error("vert() must return a vec4");
     }
 
-    if (auto expression = extractReturnExpression(*frag);
-        expression.has_value()) {
-      if (const auto index = frag->body.find("return");
-          index != std::string::npos) {
-        const Varying outColor{"ryuko_outColor", "vec4"};
-        frag->body = frag->body.substr(0, index);
-        frag->body +=
-            fmt::format("{} = {};\n{}", outColor.name, expression.value(), "}");
+    if (Function *frag = findFunction(FragFunctionName)) {
+      if (auto expression = extractReturnExpression(*frag);
+          expression.has_value()) {
+        if (const auto index = frag->body.find("return");
+            index != std::string::npos) {
+          const Varying outColor{"ryuko_outColor", "vec4", "highp"};
+          frag->body = frag->body.substr(0, index);
+          frag->body += fmt::format("{} = {};\n{}", outColor.name,
+                                    expression.value(), "}");
 
-        varyings.push_back(outColor);
+          varyings.push_back(outColor);
+        }
+      } else {
+        error("frag() must return a vec4");
       }
-    } else {
-      error("frag() must return a vec4");
     }
   }
 
