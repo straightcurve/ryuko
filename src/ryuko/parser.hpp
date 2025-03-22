@@ -22,6 +22,121 @@ public:
     return std::isalnum(input[i]) || input[i] == '_';
   }
 
+  Optional<config::ConfigValue> consumePipelineConfigurationVariable() {
+    const auto start = index;
+
+    const auto prop = consumeIdentifier();
+    consumeWhitespace();
+
+    const auto it = config::variableTypeMap.find(prop);
+    if (it == config::variableTypeMap.end()) {
+      index = start;
+      return {};
+    }
+
+    const auto value = consumeIdentifier();
+    consumeWhitespace();
+
+    if (!expect(';', __LINE__)) {
+      index = start;
+      return {};
+    }
+
+    switch (it->second) {
+    case 0: { // color_blend
+      const auto val = config::ColorBlend::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::ColorBlend{*val};
+    }
+    case 1: { // depth_test
+      const auto val = config::DepthTest::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::DepthTest{*val};
+    }
+    case 2: { // depth_write
+      const auto val = config::DepthWrite::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::DepthWrite{*val};
+    }
+    case 3: { // depth_op
+      const auto val = config::DepthOp::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::DepthOp{*val};
+    }
+    case 4: { // polygon
+      const auto val = config::Polygon::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::Polygon{*val};
+    }
+    case 5: { // cull
+      const auto val = config::Cull::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::Cull{*val};
+    }
+    case 6: { // front_face
+      const auto val = config::FrontFace::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::FrontFace{*val};
+    }
+    case 7: { // topology
+      const auto val = config::Topology::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::Topology{*val};
+    }
+    case 8: { // multisampling
+      const auto val = config::Multisampling::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::Multisampling{*val};
+    }
+    case 9: { // color_attachment_count
+      const auto val = config::ColorAttachmentCount::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::ColorAttachmentCount{*val};
+    }
+    case 10: { // depth_attachment
+      const auto val = config::DepthAttachment::parse(value);
+      if (!val) {
+        index = start;
+        return {};
+      }
+      return config::DepthAttachment{*val};
+    }
+    default:
+      index = start;
+      return {};
+    }
+  }
+
   std::string consumeCharacter() { return input.substr(index++, 1); }
 
   Optional<std::string> consumeConst() {
@@ -814,11 +929,60 @@ public:
   Optional<Context> parse() {
     Context context{};
 
+    context.config.blend.value = config::ColorBlend::Value::Disabled;
+    context.config.depthTest.value = config::DepthTest::Value::Enabled;
+    context.config.depthWrite.value = config::DepthWrite::Value::Enabled;
+    context.config.depthOp.value = config::DepthOp::Value::Less;
+    context.config.polygon.value = config::Polygon::Value::Fill;
+    context.config.cull.value = config::Cull::Value::Back;
+    context.config.front_face.value =
+        config::FrontFace::Value::CounterClockwise;
+    context.config.topology.value = config::Topology::Value::TriangleList;
+    context.config.multisampling.value = config::Multisampling::Value::None;
+    context.config.colorAttachmentCount.count = 1;
+    context.config.depthAttachment.enabled = true;
+
     while (!done()) {
       consumeWhitespace();
 
       if (auto result = consumeVersion(); result.has_value()) {
         context.version = result.value_or(450);
+        continue;
+      }
+
+      if (auto result = consumePipelineConfigurationVariable();
+          result.has_value()) {
+
+        std::visit(
+            [&context](const auto &value) {
+              using T = std::decay_t<decltype(value)>;
+
+              if constexpr (std::is_same_v<T, config::ColorBlend>) {
+                context.config.blend = value;
+              } else if constexpr (std::is_same_v<T, config::DepthTest>) {
+                context.config.depthTest = value;
+              } else if constexpr (std::is_same_v<T, config::DepthWrite>) {
+                context.config.depthWrite = value;
+              } else if constexpr (std::is_same_v<T, config::DepthOp>) {
+                context.config.depthOp = value;
+              } else if constexpr (std::is_same_v<T, config::Polygon>) {
+                context.config.polygon = value;
+              } else if constexpr (std::is_same_v<T, config::Cull>) {
+                context.config.cull = value;
+              } else if constexpr (std::is_same_v<T, config::FrontFace>) {
+                context.config.front_face = value;
+              } else if constexpr (std::is_same_v<T, config::Topology>) {
+                context.config.topology = value;
+              } else if constexpr (std::is_same_v<T, config::Multisampling>) {
+                context.config.multisampling = value;
+              } else if constexpr (std::is_same_v<
+                                       T, config::ColorAttachmentCount>) {
+                context.config.colorAttachmentCount = value;
+              } else if constexpr (std::is_same_v<T, config::DepthAttachment>) {
+                context.config.depthAttachment = value;
+              }
+            },
+            result.value());
         continue;
       }
 

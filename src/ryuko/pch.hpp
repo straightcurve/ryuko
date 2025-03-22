@@ -8,8 +8,10 @@
 #include <iosfwd>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <fmt/color.h>
@@ -17,3 +19,5 @@
 
 #include <shaderc/shaderc.h>
 #include <shaderc/shaderc.hpp>
+
+#include <vulkan/vulkan_core.h>
